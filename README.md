@@ -73,7 +73,9 @@ Why each piece is built this way, and what I rejected: [docs/DECISIONS.md](docs/
 
 `core/evals` runs the same findings twice, once with retrieval and once without, and compares the answers against fixes written by hand. It reports how often a fix was good enough to accept, plus p95 latency, tokens per second, and cost per request.
 
-For reference, one fix costs about $0.0007 and takes 3 to 5 seconds.
+**First run, 40 hand-reviewed cases across 14 audit types:** 88% of fixes were acceptable without retrieval, 95% with it. One fix costs about $0.0012 and takes 15s on average, 33s at p95.
+
+Read that honestly. 88% to 95% is three cases out of forty, which is not a significant difference at that sample size. The more useful finding is that the baseline was already 88%: Gemini knows the textbook remedy for most of these audits without being told, so a reference set written at the level of "the canonical fix for this audit" cannot tell the two arms apart. A sharper version scores against the specific file on the specific site. That is the next change to the harness, not a bigger sample.
 
 ## Run it locally
 

@@ -6,7 +6,7 @@
 |---|---|---|
 | `run_audit(url)` | Starts a Lighthouse scan, waits (30–90 s), returns score, metrics in seconds, top 5 findings | Free (Cloud Run time) |
 | `get_report(scan_id)` | Full report for a finished scan (up to 20 findings) | Free |
-| `suggest_fixes(scan_id, limit=3)` | RAG-grounded Gemini fixes for the top `limit` findings (1–5) | ~$0.0007 per fix |
+| `suggest_fixes(scan_id, limit=3)` | RAG-grounded Gemini fixes for the top `limit` findings (1–5) | ~$0.0012 per fix |
 | `site_history(url)` | Past scans of a URL with scores, newest first | Free |
 
 ## Install (once, on your laptop)
