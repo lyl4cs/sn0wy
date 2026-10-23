@@ -1,5 +1,6 @@
 """Rate limiting + /stats: unit tests and through the API with tiny limits."""
 
+import itertools
 import json
 from datetime import UTC, datetime
 
@@ -63,8 +64,18 @@ def api():
     main.app.dependency_overrides.clear()
 
 
+_urls = itertools.count()
+
+
 def _scan(client, ip):
-    return client.post("/scans", json={"url": "https://a.com"}, headers={"x-forwarded-for": ip})
+    """Each call scans a different URL on purpose.
+
+    Rate limiting is keyed on the caller, not the target, but repeating one URL
+    would be deduped (services/common/dedupe.py) and the limiter would never see
+    the second request.
+    """
+    return client.post("/scans", json={"url": f"https://a{next(_urls)}.com"},
+                       headers={"x-forwarded-for": ip})
 
 
 def test_scans_limited_per_ip_then_globally(api):

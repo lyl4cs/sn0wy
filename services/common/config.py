@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from services.common.dedupe import DEFAULT_DEDUPE_WINDOW_S, DEFAULT_FORCE_COOLDOWN_S
 from services.common.staleness import DEFAULT_STALE_AFTER_S
 
 DEFAULT_CORS_ORIGINS = "http://localhost:5173"
@@ -34,6 +35,10 @@ class Settings:
     max_scan_attempts: int
     # Seconds before a scan still waiting on the scanner is reported failed (staleness.py)
     scan_stale_after_s: int
+    # Seconds a finished scan is served again instead of re-running Lighthouse (dedupe.py)
+    scan_dedupe_window_s: int
+    # Seconds between forced re-scans of one URL, so `force` can't recreate the burst
+    scan_force_cooldown_s: int
     # Origins allowed to call the API from a browser (the React frontend). See ADR 014.
     cors_origins: tuple[str, ...]
 
@@ -49,6 +54,12 @@ def get_settings() -> Settings:
         max_scan_attempts=int(os.environ.get("MAX_SCAN_ATTEMPTS", "3")),
         scan_stale_after_s=int(
             os.environ.get("SCAN_STALE_AFTER_S", str(DEFAULT_STALE_AFTER_S))
+        ),
+        scan_dedupe_window_s=int(
+            os.environ.get("SCAN_DEDUPE_WINDOW_S", str(DEFAULT_DEDUPE_WINDOW_S))
+        ),
+        scan_force_cooldown_s=int(
+            os.environ.get("SCAN_FORCE_COOLDOWN_S", str(DEFAULT_FORCE_COOLDOWN_S))
         ),
         cors_origins=parse_origins(os.environ.get("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)),
     )

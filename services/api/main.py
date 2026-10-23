@@ -27,7 +27,7 @@ from dataclasses import asdict
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse
@@ -39,6 +39,7 @@ from core.fixes.suggest import FindingInput, suggest_fix
 from core.llm import LLM
 from core.rag.retrieve import Retriever
 from services.api.ratelimit import DAY, HOUR, Limits, client_ip, enforce
+from services.common import dedupe
 from services.common.config import get_settings
 from services.common.models import OffenderOut, PlatformOut, Report, Scan, ScanSummary, Stats
 from services.common.queue import InMemoryPublisher, Publisher, PubSubPublisher
@@ -103,6 +104,9 @@ def get_publisher() -> Publisher:
 
 class ScanRequest(BaseModel):
     url: HttpUrl
+    #: Skip the dedupe window and measure again. For the person who just shipped a
+    #: fix and needs a fresh number; bounded by SCAN_FORCE_COOLDOWN_S.
+    force: bool = False
 
 
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
@@ -128,15 +132,41 @@ def get_limits() -> Limits:
 def create_scan(
     req: ScanRequest,
     request: Request,
+    response: Response,
     store: Store = Depends(get_store),
     publisher: Publisher = Depends(get_publisher),
     limits: Limits = Depends(get_limits),
 ) -> Scan:
+    """Start a scan, or hand back a recent one for the same URL (see dedupe.py).
+
+    Status code is the signal to the caller: 202 means Lighthouse is about to run,
+    200 means this scan already existed and no new work was started. The frontend
+    uses that to say so rather than implying it just measured the site.
+    """
     # Per-visitor first: a single abuser hits their own limit before eating the global one.
     enforce(store, f"scan:ip:{client_ip(request)}", limits.scans_per_ip_per_hour, HOUR,
             what="scans")
     enforce(store, "scan:global", limits.scans_per_day, DAY, what="scans today (site-wide)")
-    scan = store.create_scan(str(req.url))
+
+    url = str(req.url)
+    settings = get_settings()
+    latest = store.latest_scan(url)
+
+    if req.force:
+        wait_s = dedupe.force_blocked_for_s(latest, cooldown_s=settings.scan_force_cooldown_s)
+        if wait_s:
+            raise HTTPException(
+                status_code=429,
+                detail=f"This site was scanned moments ago. Try again in {wait_s}s.",
+                headers={"Retry-After": str(wait_s)},
+            )
+    else:
+        existing = dedupe.reusable(latest, window_s=settings.scan_dedupe_window_s)
+        if existing is not None:
+            response.status_code = 200
+            return existing
+
+    scan = store.create_scan(url)
     publisher.publish({"scan_id": scan.id, "url": scan.url})
     return scan
 
