@@ -86,9 +86,15 @@ def handle_push(
         # so it gets the same handling: retry, then record why and give up.
         store.save_result(scan_id, result.report, result.raw, result.duration_ms)
     except Exception as e:  # noqa: BLE001 - any scan failure is retryable
-        log.warning("scan %s attempt %s failed: %s", scan_id, attempts, e)
+        # The raw Lighthouse output goes to the log and nowhere else. What gets
+        # stored is the sentence the person reading the scan will see, and it is
+        # never allowed to be empty: an exception with no message is exactly how
+        # two scans ended up displayed as "unknown error" (failures.py).
+        raw = getattr(getattr(e, "failure", None), "raw", "")
+        log.warning("scan %s attempt %s failed: %s%s", scan_id, attempts, e,
+                    f" | {raw}" if raw else "")
         if attempts >= get_settings().max_scan_attempts:
-            store.mark_failed(scan_id, str(e))
+            store.mark_failed(scan_id, str(e) or f"The scan failed ({type(e).__name__}).")
             return {"status": "failed"}
         response.status_code = 500  # ask Pub/Sub to retry
         return {"status": "retry"}
