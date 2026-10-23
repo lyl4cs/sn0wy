@@ -66,7 +66,10 @@ def test_fixes_with_ai(ctx, scan_result):
     assert fixes[0]["sources"] == ["web.dev/js"]
 
 
-def test_site_history_newest_first_with_scores(ctx, scan_result):
+def test_site_history_newest_first_with_scores(ctx, scan_result, monkeypatch):
+    # Two scans of one URL is the point of a history, so turn dedupe off rather than
+    # waiting out its window. Covered on its own in tests/test_scan_dedupe.py.
+    monkeypatch.setenv("SCAN_DEDUPE_WINDOW_S", "0")
     client, store, _ = ctx
     first = client.post("/scans", json={"url": "https://example.com"}).json()["id"]
     store.save_result(first, scan_result.report, scan_result.raw, scan_result.duration_ms)

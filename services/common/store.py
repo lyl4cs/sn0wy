@@ -61,6 +61,7 @@ class Store(Protocol):
     def get_report(self, scan_id: str) -> Report | None: ...
     def get_evidence(self, scan_id: str, audit_ids: list[str]) -> dict | None: ...
     def list_scans(self, url: str, limit: int = 20) -> list[ScanSummary]: ...
+    def latest_scan(self, url: str) -> Scan | None: ...
     def hit(self, key: str, window_start: datetime, cost: int = 1) -> int: ...
     def stats(self) -> Stats: ...
 
@@ -152,6 +153,13 @@ class InMemoryStore:
             key=lambda sc: sc.created_at, reverse=True,
         )[:limit]
         return self._summaries([settle_stale(sc, after_s=_stale_after_s()) for sc in scans])
+
+    def latest_scan(self, url: str) -> Scan | None:
+        scans = [sc for sc in self.scans.values() if sc.url == url]
+        if not scans:
+            return None
+        newest = max(scans, key=lambda sc: sc.created_at)
+        return settle_stale(newest, after_s=_stale_after_s())
 
 
 class PostgresStore:  # pragma: no cover - exercised against a real DB
@@ -331,3 +339,12 @@ class PostgresStore:  # pragma: no cover - exercised against a real DB
 
     def list_scans(self, url: str, limit: int = 20) -> list[ScanSummary]:
         return self._summaries("WHERE s.url = %s", (url,), limit)
+
+    def latest_scan(self, url: str) -> Scan | None:
+        with self._conn() as c:
+            row = c.execute(
+                f"""SELECT {self._SCAN_COLS} FROM scans WHERE url = %s
+                    ORDER BY created_at DESC LIMIT 1""",
+                (url,),
+            ).fetchone()
+            return self._row_to_scan(row) if row else None
