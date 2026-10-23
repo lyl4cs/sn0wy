@@ -86,6 +86,17 @@ export interface Report {
   conditions?: Conditions;
 }
 
+/** What POST /scans gives back: the scan, and whether it already existed.
+ *
+ * `reused: true` means the API returned a scan it already had rather than
+ * starting a new one, because the same URL was scanned very recently or is being
+ * scanned right now. Nothing was re-measured, so a screen that says "scanned" is
+ * lying. See services/common/dedupe.py for why the window exists. */
+export interface CreatedScan {
+  scan: Scan;
+  reused: boolean;
+}
+
 /** services/common/models.py: ScanSummary */
 export interface ScanSummary {
   scan: Scan;
@@ -142,7 +153,9 @@ type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 export function createApi(baseUrl: string, fetchFn: FetchFn = (i, init) => fetch(i, init)) {
   const base = baseUrl.replace(/\/+$/, "");
 
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  /** Like `request`, but keeps the Response so a caller can read the status.
+   *  Only POST /scans needs it: 200 and 202 mean different things there. */
+  async function send<T>(path: string, init?: RequestInit): Promise<{ data: T; status: number }> {
     let res: Response;
     try {
       res = await fetchFn(base + path, {
@@ -164,21 +177,32 @@ export function createApi(baseUrl: string, fetchFn: FetchFn = (i, init) => fetch
     if (!res.ok) {
       throw new ApiError(res.status, errorMessage(body, `Request failed (HTTP ${res.status}).`));
     }
-    return body as T;
+    return { data: body as T, status: res.status };
+  }
+
+  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+    return (await send<T>(path, init)).data;
   }
 
   const q = encodeURIComponent;
 
   return {
     baseUrl: base,
-    /** POST /scans -> 202 with the queued scan. */
-    createScan: (url: string, signal?: AbortSignal) =>
-      request<Scan>("/scans", {
+    /** POST /scans. 202 = a new scan is queued, 200 = an existing one was handed
+     *  back (see services/common/dedupe.py). `force` skips the dedupe window and
+     *  can answer 429 while the per-URL cooldown is running. */
+    createScan: async (
+      url: string,
+      opts: { force?: boolean; signal?: AbortSignal } = {},
+    ): Promise<CreatedScan> => {
+      const { data, status } = await send<Scan>("/scans", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url }),
-        signal,
-      }),
+        body: JSON.stringify(opts.force ? { url, force: true } : { url }),
+        signal: opts.signal,
+      });
+      return { scan: data, reused: status === 200 };
+    },
     /** GET /scans/{id} */
     getScan: (id: string, signal?: AbortSignal) =>
       request<Scan>(`/scans/${q(id)}`, { signal }),

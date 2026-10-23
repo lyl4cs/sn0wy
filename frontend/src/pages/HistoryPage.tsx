@@ -510,7 +510,7 @@ function SiteHistory({ url }: { url: string }) {
             </p>
           )}
         </div>
-        <button type="button" className="pill pill-sm" onClick={() => rescan(url)} disabled={busy}>
+        <button type="button" className="pill pill-sm" onClick={() => rescan(url, { force: true })} disabled={busy}>
           <span>{busy ? "Starting…" : history.length ? "Scan again" : "Scan it now"}</span>
           <span className="pill-icon">{busy ? <SpinnerIcon /> : <RetryIcon size={20} />}</span>
         </button>
