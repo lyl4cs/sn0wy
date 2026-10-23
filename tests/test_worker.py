@@ -62,6 +62,28 @@ def test_failure_retries_then_gives_up(ctx):
     assert store.get_scan(scan.id).status == "failed"
 
 
+def test_a_failure_with_no_message_is_never_stored_as_nothing(ctx):
+    """The 'unknown error' regression, guarded at the point that writes the row.
+
+    An exception whose str() is empty used to be stored verbatim, and the history
+    rendered it as 'unknown error'. See services/scanner/failures.py.
+    """
+    client, store = ctx
+    scan = store.create_scan("https://silent.example")
+
+    def silent(url):
+        raise RuntimeError("")  # what a killed process looks like from up here
+
+    use_scan(silent)
+    body = push({"scan_id": scan.id, "url": scan.url})
+    client.post("/pubsub/push", json=body)
+    client.post("/pubsub/push", json=body)
+    failed = store.get_scan(scan.id)
+    assert failed.status == "failed"
+    assert failed.error and failed.error.strip()
+    assert "RuntimeError" in failed.error
+
+
 def test_malformed_message_is_dropped(ctx):
     client, _ = ctx
     res = client.post("/pubsub/push", json={"message": {"data": "bm90IGpzb24="}})
