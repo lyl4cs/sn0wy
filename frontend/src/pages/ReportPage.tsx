@@ -539,6 +539,15 @@ export function ReportPage() {
             {finished && (
               <span>
                 Finished <strong>{`${formatLongDate(finished)} · ${formatTime(finished)}`}</strong>
+                <Explain label="this timestamp">
+                  {
+                    "This is when the site was actually measured, which may be earlier " +
+                    "than when you asked. Scanning a URL someone already scanned in the " +
+                    "last few minutes gives you that result instead of running a second " +
+                    "audit, because the score will not have moved and the site would have " +
+                    "to serve the whole page again. Press Scan again to measure it now."
+                  }
+                </Explain>
               </span>
             )}
             {scan.duration_ms !== null && (
@@ -564,7 +573,7 @@ export function ReportPage() {
             <TrendIcon />
             Site history
           </Link>
-          <button type="button" className="pill pill-sm" onClick={() => rescan(scan.url)} disabled={busy}>
+          <button type="button" className="pill pill-sm" onClick={() => rescan(scan.url, { force: true })} disabled={busy}>
             <span>{busy ? "Starting…" : "Scan again"}</span>
             <span className="pill-icon">{busy ? <SpinnerIcon /> : <RetryIcon size={20} />}</span>
           </button>

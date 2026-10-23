@@ -66,6 +66,38 @@ describe("ReportPage", () => {
     expect(screen.getAllByRole("link", { name: "Learn more" })[0]).toHaveAttribute("href", "https://web.dev/x");
   });
 
+  it("sends force:true when Scan again is pressed, so dedupe can't swallow it", async () => {
+    const calls = mockFetch((u) =>
+      u.pathname.endsWith("/report") ? { body: report } : { body: scanFixture({ id: "new" }), status: 202 },
+    );
+    renderReport();
+    await screen.findByRole("heading", { name: "northwind.shop" });
+    fireEvent.click(screen.getByRole("button", { name: /scan again/i }));
+    await waitFor(() => expect(calls.mock.calls.some(([, i]) => i?.method === "POST")).toBe(true));
+    const post = calls.mock.calls.find(([, i]) => i?.method === "POST")!;
+    expect(JSON.parse(post[1]!.body as string)).toEqual({ url: "https://northwind.shop/", force: true });
+  });
+
+  it("shows the cooldown message when a forced re-scan is refused", async () => {
+    mockFetch((u) =>
+      u.pathname.endsWith("/report")
+        ? { body: report }
+        : { body: { detail: "This site was scanned moments ago. Try again in 41s." }, status: 429 },
+    );
+    renderReport();
+    await screen.findByRole("heading", { name: "northwind.shop" });
+    fireEvent.click(screen.getByRole("button", { name: /scan again/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Try again in 41s.");
+  });
+
+  it("explains why the timestamp can be older than the request", async () => {
+    mockFetch((u) => (u.pathname.endsWith("/report") ? { body: report } : undefined));
+    renderReport();
+    await screen.findByRole("heading", { name: "northwind.shop" });
+    fireEvent.click(screen.getByRole("button", { name: /what is this timestamp/i }));
+    expect(screen.getByRole("note")).toHaveTextContent(/already scanned in the last few minutes/);
+  });
+
   it("requests limit=index+1 and caches the fixes it got back", async () => {
     const calls = mockFetch((u) => {
       if (u.pathname.endsWith("/report")) return { body: report };

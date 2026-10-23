@@ -25,22 +25,37 @@ import { api } from "../api";
 import { rememberScan } from "./recentScans";
 
 export interface Rescan {
-  rescan: (url: string) => Promise<void>;
+  rescan: (url: string, opts?: { force?: boolean }) => Promise<void>;
   busy: boolean;
   error: string | null;
 }
 
+/**
+ * WHO PASSES `force` AND WHO MUST NOT
+ *
+ * "Scan again" on a report or in the history is asking to measure a site that was
+ * already measured successfully. Without `force` the API hands back that same scan
+ * (dedupe.py), the page routes to the report the user is already looking at, and
+ * the button appears broken. Those callers pass `force: true` and accept the
+ * server's per-URL cooldown, which arrives as a 429 saying how long to wait.
+ *
+ * Retry on a *failed* scan must not force. A failure is never deduped, so a plain
+ * request already starts fresh work, and forcing would subject the retry to the
+ * cooldown instead. That is wrong for the failures that have nothing to do with
+ * the target site: a Chrome crash or our own timeout should be retryable at once,
+ * not after 60 seconds of penance for a burst that never happened.
+ */
 export function useRescan(): Rescan {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  async function rescan(url: string) {
+  async function rescan(url: string, opts: { force?: boolean } = {}) {
     setBusy(true);
     setError(null);
     try {
-      const s = await api.createScan(url);
-      rememberScan(s);
-      navigate(`/scans/${s.id}`);
+      const { scan } = await api.createScan(url, { force: opts.force });
+      rememberScan(scan);
+      navigate(`/scans/${scan.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't start a new scan.");
       setBusy(false);

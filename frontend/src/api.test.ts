@@ -13,13 +13,29 @@ function setup(response: Response | Error | DOMException) {
 describe("createApi", () => {
   it("POSTs a JSON body to /scans and strips the trailing slash from the base", async () => {
     const { api, fetchFn } = setup(jsonResponse({ id: "1", status: "queued" }, 202));
-    const scan = await api.createScan("https://a.com");
+    const { scan, reused } = await api.createScan("https://a.com");
     expect(scan.id).toBe("1");
+    expect(reused).toBe(false); // 202: a new scan was queued
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.test/scans");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ url: "https://a.com" });
     expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
+  });
+
+  it("reports a 200 from /scans as a reused scan, and only sends force when asked", async () => {
+    const { api, fetchFn } = setup(jsonResponse({ id: "1", status: "done" }, 200));
+    const { reused } = await api.createScan("https://a.com");
+    expect(reused).toBe(true); // 200: nothing was re-measured
+    const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ url: "https://a.com" });
+  });
+
+  it("sends force:true when the caller insists on a fresh measurement", async () => {
+    const { api, fetchFn } = setup(jsonResponse({ id: "2", status: "queued" }, 202));
+    await api.createScan("https://a.com", { force: true });
+    const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ url: "https://a.com", force: true });
   });
 
   it("builds every GET path, encoding ids and URLs", async () => {

@@ -44,7 +44,9 @@ export function ScanForm({ initial = "" }: { initial?: string }) {
     setBusy(true);
     setError(null);
     try {
-      const scan = await api.createScan(url);
+      // No `force`: a plain submission is happy to be served a recent scan of the
+      // same URL rather than making the site serve another audit (dedupe.py).
+      const { scan } = await api.createScan(url);
       rememberScan(scan);
       navigate(`/scans/${scan.id}`);
     } catch (err) {
