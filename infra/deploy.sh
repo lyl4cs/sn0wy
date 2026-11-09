@@ -71,10 +71,18 @@ echo "== Build images with Cloud Build (no local Docker needed)"
 gcloud builds submit --config=infra/cloudbuild.yaml \
   --substitutions="_REPO=${REPO},_TAG=${TAG},_CHROMIUM_VERSION=${CHROMIUM_VERSION:-}" .
 
+# SIZED FOR THE AUDIT PHASE, NOT THE PAGE LOAD.
+# Lighthouse spends most of a run after the page has loaded: processing the trace
+# and computing audits, which is CPU-bound and barely parallel. At --cpu=2 a site
+# that a laptop measures in ~25s took over 120s here and hit the subprocess
+# timeout, three attempts running, so it looked like the site was broken.
+# --memory=4Gi is tied to the --disable-dev-shm-usage flag in run_lighthouse.py:
+# Chrome's shared buffers now live in /tmp, which on Cloud Run is memory-backed
+# and draws on this limit instead of a fixed 64MB /dev/shm.
 echo "== Deploy scanner (private: only Pub/Sub may call it)"
 gcloud run deploy antarctica-scanner --image="${REPO}/scanner:${TAG}" --region="$REGION" \
   --service-account="$SCAN_SA" --no-allow-unauthenticated \
-  --concurrency=1 --cpu=2 --memory=2Gi --timeout=300 --min-instances=0 --max-instances=3 \
+  --concurrency=1 --cpu=4 --memory=4Gi --timeout=300 --min-instances=0 --max-instances=3 \
   --set-env-vars="${ENV}" --set-secrets="DATABASE_URL=database-url:latest"
 SCANNER_URL="$(gcloud run services describe antarctica-scanner --region="$REGION" \
   --format='value(status.url)')"

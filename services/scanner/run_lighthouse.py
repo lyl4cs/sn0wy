@@ -49,7 +49,17 @@ class LighthouseError(RuntimeError):
         self.failure = failure
 
 
-def run_scan(url: str, timeout_s: int = 120) -> ScanResult:
+#: How long one Lighthouse run may take before we stop it. This is a backstop for
+#: a page that never settles, not a performance budget: a healthy scan of a heavy
+#: site finishes well inside it. It was 120s, which a 4-CPU scanner clears
+#: comfortably but a 2-CPU one did not, so the number was failing scans that the
+#: hardware, not the site, was too slow for. Raising CPU is the real fix (see
+#: infra/deploy.sh); this leaves headroom so a marginal page is measured instead
+#: of being blamed.
+DEFAULT_TIMEOUT_S = 180
+
+
+def run_scan(url: str, timeout_s: int = DEFAULT_TIMEOUT_S) -> ScanResult:
     if not url.startswith(("http://", "https://")):
         raise ValueError(f"URL must start with http:// or https://, got {url!r}")
     start = time.perf_counter()
