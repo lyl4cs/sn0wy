@@ -35,9 +35,20 @@ fi
 # Nothing below is reversible in under a minute, so the cheap checks run first.
 # Skipping either of these is what turned a one-line schema error into an hour of
 # outage: set SKIP_PREFLIGHT=1 only when you know exactly why.
+# Which interpreter runs the preflight. macOS ships no `python` at all, only
+# `python3`, so a bare `python` here failed with "command not found" before a
+# single test ran -- and because that is a non-zero exit like any other, the
+# script reported "tests failed, refusing to deploy" and stopped. Deploys were
+# refused for weeks on that machine while the message said the tests were bad.
+# $PYTHON lets a virtualenv or a pinned interpreter override it.
+PYTHON="${PYTHON:-$(command -v python3 || command -v python)}"
+if [[ -z "$PYTHON" ]]; then
+  echo "deploy: no python3 on PATH; set PYTHON=/path/to/python" >&2; exit 1
+fi
+
 if [[ "${SKIP_PREFLIGHT:-0}" != "1" ]]; then
-  echo "== Preflight: tests"
-  if ! python -m pytest -q; then
+  echo "== Preflight: tests ($PYTHON)"
+  if ! "$PYTHON" -m pytest -q; then
     echo "deploy: tests failed, refusing to deploy. SKIP_PREFLIGHT=1 overrides." >&2
     exit 1
   fi
@@ -45,7 +56,7 @@ if [[ "${SKIP_PREFLIGHT:-0}" != "1" ]]; then
   echo "== Preflight: database schema matches this checkout"
   # Exit 2 (cannot check) is also a stop. A deploy you could not verify is exactly
   # the one that caused the incident this check exists for.
-  if ! python infra/preflight.py; then
+  if ! "$PYTHON" infra/preflight.py; then
     echo "deploy: schema check failed, refusing to deploy. SKIP_PREFLIGHT=1 overrides." >&2
     exit 1
   fi
