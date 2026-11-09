@@ -110,7 +110,7 @@ def test_deploy_runs_both_checks_before_building():
     """A check the deploy script does not call is decoration."""
     sh = (ROOT / "infra" / "deploy.sh").read_text()
     preflight_at = sh.index("infra/preflight.py")
-    tests_at = sh.index("python -m pytest -q")
+    tests_at = sh.index("-m pytest -q")  # interpreter is $PYTHON, not a fixed name
     build_at = sh.index("gcloud builds submit")
     assert tests_at < build_at, "tests must run before anything is built"
     assert preflight_at < build_at, "the schema check must run before anything is built"
