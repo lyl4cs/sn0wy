@@ -61,3 +61,38 @@ def test_preflight_still_refuses_the_deploy_when_tests_fail():
     """The guard this script exists for has to survive the fix."""
     assert "refusing to deploy" in TEXT
     assert "SKIP_PREFLIGHT" in TEXT
+
+
+def test_scanner_has_enough_cpu_for_the_audit_phase():
+    """Lighthouse's expensive phase is CPU-bound trace processing, not page load.
+
+    At --cpu=2 a site a laptop measured in ~25s exceeded a 120s subprocess
+    timeout here, across three attempts, and read as the site being broken.
+    """
+    scanner = TEXT[TEXT.index("gcloud run deploy antarctica-scanner"):]
+    scanner = scanner[: scanner.index("echo")]
+    cpu = int(re.search(r"--cpu=(\d+)", scanner).group(1))
+    assert cpu >= 4, f"scanner deployed with --cpu={cpu}; the audit phase needs more"
+
+
+def test_scanner_memory_covers_chromes_relocated_buffers():
+    """--disable-dev-shm-usage moves Chrome's shared buffers to /tmp, which on
+    Cloud Run is memory-backed and draws on this limit."""
+    scanner = TEXT[TEXT.index("gcloud run deploy antarctica-scanner"):]
+    scanner = scanner[: scanner.index("echo")]
+    mem = int(re.search(r"--memory=(\d+)Gi", scanner).group(1))
+    assert mem >= 4, f"scanner deployed with --memory={mem}Gi"
+
+
+def test_cloud_run_request_timeout_outlasts_the_scan_timeout():
+    """A request killed by Cloud Run before run_scan's own timeout fires never
+    records why it failed: the worker's except block does not get to run."""
+    from services.scanner.run_lighthouse import DEFAULT_TIMEOUT_S
+
+    scanner = TEXT[TEXT.index("gcloud run deploy antarctica-scanner"):]
+    scanner = scanner[: scanner.index("echo")]
+    request_timeout = int(re.search(r"--timeout=(\d+)", scanner).group(1))
+    assert request_timeout > DEFAULT_TIMEOUT_S, (
+        f"Cloud Run --timeout={request_timeout}s must outlast "
+        f"DEFAULT_TIMEOUT_S={DEFAULT_TIMEOUT_S}s"
+    )
