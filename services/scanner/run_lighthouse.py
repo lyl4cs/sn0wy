@@ -16,7 +16,16 @@ LIGHTHOUSE_CMD = [
     "--output-path=stdout",
     "--only-categories=performance",
     "--quiet",
-    "--chrome-flags=--headless=new --no-sandbox --disable-gpu",
+    # --disable-dev-shm-usage is load-bearing in a container, not boilerplate.
+    # Chrome keeps its renderer and compositor buffers in /dev/shm, which is 64MB
+    # by default under a container runtime. A JavaScript-heavy page fills that,
+    # the renderer is killed, and the DevTools connection drops mid-call. What
+    # Lighthouse then prints is "Protocol error (Runtime.evaluate): Target closed",
+    # which reads like our bug and is really an out-of-space one. The flag moves
+    # those buffers to /tmp, which on Cloud Run is backed by the memory limit
+    # rather than a fixed 64MB. See ADR: scans of Next.js sites failed this way
+    # while static pages passed, which is why it looked like a host-specific bug.
+    "--chrome-flags=--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage",
 ]
 
 
